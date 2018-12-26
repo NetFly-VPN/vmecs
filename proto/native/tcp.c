@@ -75,6 +75,18 @@ _native_tcp_socket_connect(tcp_socket_t *_sock, const char *node, const char *po
     return socket_connect(sock->sock, &addr);
 }
 
+static int
+_native_tcp_socket_try_connect(tcp_socket_t *_sock, const char *node, const char *port)
+{
+    native_tcp_socket_t *sock = (native_tcp_socket_t *)_sock;
+    socket_sockaddr_t addr;
+
+    if (socket_getsockaddr(node, port, &addr))
+        return -1;
+
+    return socket_try_connect(sock->sock, &addr);
+}
+
 static fd_t
 _native_tcp_socket_revent(tcp_socket_t *_sock)
 {
@@ -119,6 +131,7 @@ native_tcp_socket_new_fd(fd_t fd)
     ret->accept_func = _native_tcp_socket_accept;
     ret->handshake_func = _native_tcp_socket_handshake;
     ret->connect_func = _native_tcp_socket_connect;
+    ret->try_connect_func = _native_tcp_socket_try_connect;
     ret->revent_func = _native_tcp_socket_revent;
     ret->close_func = _native_tcp_socket_close;
     ret->free_func = _native_tcp_socket_free;

@@ -24,6 +24,24 @@ _vmess_tcp_outbound_client(tcp_outbound_t *_outbound, const target_id_t *target)
     return (tcp_socket_t *)sock;
 }
 
+static tcp_socket_t *
+_vmess_tcp_outbound_socket(tcp_outbound_t *_outbound, const target_id_t *target)
+{
+    vmess_tcp_outbound_t *outbound = (vmess_tcp_outbound_t *)_outbound;
+    vmess_tcp_socket_t *sock = vmess_tcp_socket_new(outbound->config);
+
+    vmess_tcp_socket_set_proxy(sock, outbound->proxy);
+    vmess_tcp_socket_auth(sock, time(NULL));
+
+    return (tcp_socket_t *)sock;
+}
+
+static int
+_vmess_tcp_outbound_try_connect(tcp_outbound_t *_outbound, tcp_socket_t *sock, const target_id_t *target)
+{
+    return tcp_socket_try_connect_target(sock, target);
+}
+
 static void
 _vmess_tcp_outbound_free(tcp_outbound_t *_outbound)
 {
@@ -43,6 +61,8 @@ vmess_tcp_outbound_new(vmess_config_t *config, target_id_t *proxy)
     ASSERT(ret, "out of mem");
 
     ret->client_func = _vmess_tcp_outbound_client;
+    ret->socket_func = _vmess_tcp_outbound_socket;
+    ret->try_connect_func = _vmess_tcp_outbound_try_connect;
     ret->free_func = _vmess_tcp_outbound_free;
     ret->config = vmess_config_copy(config);
     ret->proxy = target_id_copy(proxy);

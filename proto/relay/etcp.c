@@ -9,7 +9,24 @@
 
 #define EPOLL_TIMEOUT 1
 
+#define EVENT_HEADER \
+    int ev_type;
+
+enum {
+    EV_TYPE_CONNECT,
+    EV_TYPE_DATA
+};
+
+typedef struct {
+    EVENT_HEADER
+    tcp_socket_t *in_sock;
+    tcp_socket_t *out_sock;
+    int out;
+} etcp_wait_conn_t;
+
 typedef struct etcp_relay_conn_t_tag {
+    EVENT_HEADER
+
     fd_t in_fd;
     fd_t out_fd;
 
@@ -28,11 +45,33 @@ typedef struct {
     bool stop;
 } etcp_job_t;
 
+static etcp_wait_conn_t *
+etcp_wait_conn_new(tcp_socket_t *in, tcp_socket_t *out, int out_fd)
+{
+    etcp_wait_conn_t *ret = malloc(sizeof(*ret));
+    ASSERT(ret, "out of mem");
+
+    ret->ev_type = EV_TYPE_CONNECT;
+    ret->in_sock = in;
+    ret->out_sock = out;
+    ret->out = out_fd;
+
+    return ret;
+}
+
+static void
+etcp_wait_conn_free(etcp_wait_conn_t *conn)
+{
+    free(conn);
+}
+
 static etcp_relay_conn_t *
 etcp_relay_conn_new(fd_t in_fd, fd_t out_fd, tcp_socket_t *in, tcp_socket_t *out)
 {
     etcp_relay_conn_t *ret = malloc(sizeof(*ret));
     ASSERT(ret, "out of mem");
+
+    ret->ev_type = EV_TYPE_DATA;
 
     ret->in_fd = in_fd;
     ret->out_fd = out_fd;
@@ -85,12 +124,46 @@ etcp_handle(epoll_t epfd, tcp_outbound_t *outbound, etcp_relay_conn_t *conn, siz
     etcp_relay_conn_t *conn1, *conn2;
     target_id_t *target;
 
+    etcp_wait_conn_t *wconn;
+
     fd_t in_fd, out_fd;
 
     epoll_event_t event;
 
     byte_t *buf;
     ssize_t res;
+
+    switch (conn->ev_type) {
+        case EV_TYPE_CONNECT:
+            // TRACE("connected?");
+
+            // still waiting on connection
+            wconn = (etcp_wait_conn_t *)conn;
+
+            if (socket_error(wconn->out) == 0) {
+                new_in = wconn->in_sock;
+                new_out = wconn->out_sock;
+
+                fd_epoll_ctl(epfd, FD_EPOLL_DEL, wconn->out, NULL);
+
+                etcp_wait_conn_free(wconn);
+
+                goto EVENT_SETUP;
+            } else {
+                TRACE("connection error %p", (void *)wconn);
+
+                tcp_socket_close(wconn->in_sock);
+                tcp_socket_free(wconn->in_sock);
+                tcp_socket_close(wconn->out_sock);
+                tcp_socket_free(wconn->out_sock);
+                etcp_wait_conn_free(wconn);
+                return;
+            }
+
+        case EV_TYPE_DATA:
+            // TRACE("data conn");
+            break;
+    }
 
     if (!conn->out_sock) {
         // server
@@ -117,7 +190,7 @@ etcp_handle(epoll_t epfd, tcp_outbound_t *outbound, etcp_relay_conn_t *conn, siz
                 fprintf(stderr, "request: NULL\n");
             }
 
-            if (!(new_out = tcp_outbound_client(outbound, target))) {
+            if (!(new_out = tcp_outbound_socket(outbound, target))) {
                 // failed to connect
                 tcp_socket_close(new_in);
                 tcp_socket_free(new_in);
@@ -125,8 +198,40 @@ etcp_handle(epoll_t epfd, tcp_outbound_t *outbound, etcp_relay_conn_t *conn, siz
                 return;
             }
 
+            switch (tcp_outbound_try_connect(outbound, new_out, target)) {
+                case 0: break;
+                case -2: // EAGAIN
+                    // TRACE("connection EAGAIN");
+
+                    target_id_free(target);
+
+                    // set up temp connect event
+                    out_fd = tcp_socket_revent(new_out);
+
+                    event = (epoll_event_t) {
+                        .events = FD_EPOLL_WRITE | FD_EPOLL_RDHUP | FD_EPOLL_ET,
+                        .data = {
+                            .ptr = etcp_wait_conn_new(new_in, new_out, out_fd)
+                        }
+                    };
+
+                    fd_epoll_ctl(epfd, FD_EPOLL_ADD, out_fd, &event);
+
+                    return;
+
+                default:
+                    tcp_socket_close(new_in);
+                    tcp_socket_free(new_in);
+                    tcp_socket_close(new_out);
+                    tcp_socket_free(new_out);
+                    target_id_free(target);
+                    return;
+            }
+
             target_id_free(target);
-        
+
+EVENT_SETUP:
+
             in_fd = tcp_socket_revent(new_in);
             out_fd = tcp_socket_revent(new_out);
 
@@ -155,8 +260,6 @@ etcp_handle(epoll_t epfd, tcp_outbound_t *outbound, etcp_relay_conn_t *conn, siz
         }
     } else {
         // pipe
-
-        // TRACE("piping");
 
         buf = malloc(DEFAULT_BUFFER);
         ASSERT(buf, "out of mem");

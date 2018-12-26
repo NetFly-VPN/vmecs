@@ -185,6 +185,30 @@ socket_connect(fd_t sock, socket_sockaddr_t *addr)
     return ret;
 }
 
+// returns -2 if not ready
+INLINE int
+socket_try_connect(fd_t sock, socket_sockaddr_t *addr)
+{
+    int flags = fcntl(sock, F_GETFL, 0);
+    int ret;
+
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
+    ret = connect(sock, (struct sockaddr *)&addr->addr, addr->len);
+
+    if (ret == -1) {
+        if (errno == EAGAIN || errno == EINPROGRESS) {
+            ret = -2;
+        } else {
+            perror("connect");
+        }
+    }
+
+    // fcntl(sock, F_SETFL, flags);
+
+    return ret;
+}
+
 INLINE int
 socket_listen(fd_t sock, int backlog)
 {
@@ -216,6 +240,20 @@ socket_accept(fd_t sock, socket_sockaddr_t *addr)
 #undef DO_ACCEPT
 
     return ret;
+}
+
+INLINE int
+socket_error(fd_t sock)
+{
+    int res;
+    socklen_t len = sizeof(res);
+
+    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &res, &len) == -1) {
+        perror("getsockopt");
+        return -1;
+    }
+
+    return res;
 }
 
 #endif

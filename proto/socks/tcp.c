@@ -385,6 +385,7 @@ socks_tcp_socket_new_fd(int socks_vers, fd_t fd)
     ret->accept_func = _socks_tcp_socket_accept;
     ret->handshake_func = _socks_tcp_socket_handshake;
     ret->connect_func = _socks_tcp_socket_connect;
+    ret->try_connect_func = _socks_tcp_socket_connect; // use sync
     ret->revent_func = _socks_tcp_socket_revent;
     ret->close_func = _socks_tcp_socket_close;
     ret->free_func = _socks_tcp_socket_free;

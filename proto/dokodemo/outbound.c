@@ -17,6 +17,18 @@ _dokodemo_tcp_outbound_client(tcp_outbound_t *_outbound, const target_id_t *_)
     return sock;
 }
 
+static tcp_socket_t *
+_dokodemo_tcp_outbound_socket(tcp_outbound_t *_outbound, const target_id_t *_)
+{
+    return (tcp_socket_t *)native_tcp_socket_new();
+}
+
+static int
+_dokodemo_tcp_outbound_try_connect(tcp_outbound_t *_outbound, tcp_socket_t *sock, const target_id_t *_)
+{
+    return tcp_socket_try_connect_target(sock, ((dokodemo_tcp_outbound_t *)_outbound)->target);
+}
+
 static void
 _dokodemo_tcp_outbound_free(tcp_outbound_t *_outbound)
 {
@@ -35,6 +47,8 @@ dokodemo_tcp_outbound_new(target_id_t *target)
     ASSERT(ret, "out of mem");
 
     ret->client_func = _dokodemo_tcp_outbound_client;
+    ret->socket_func = _dokodemo_tcp_outbound_socket;
+    ret->try_connect_func = _dokodemo_tcp_outbound_try_connect;
     ret->free_func = _dokodemo_tcp_outbound_free;
     
     ret->target = target_id_copy(target);

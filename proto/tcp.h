@@ -13,6 +13,7 @@
     tcp_socket_accept_t accept_func; \
     tcp_socket_handshake_t handshake_func; \
     tcp_socket_connect_t connect_func; \
+    tcp_socket_try_connect_t try_connect_func; \
     tcp_socket_revent_t revent_func; \
     tcp_socket_close_t close_func; \
     tcp_socket_free_t free_func; \
@@ -31,6 +32,10 @@ typedef struct tcp_socket_t_tag *(*tcp_socket_accept_t)(struct tcp_socket_t_tag 
 typedef int (*tcp_socket_handshake_t)(struct tcp_socket_t_tag *sock);
 
 typedef int (*tcp_socket_connect_t)(struct tcp_socket_t_tag *sock, const char *node, const char *port);
+
+// async connect
+// return -2 for EAGAIN
+typedef int (*tcp_socket_try_connect_t)(struct tcp_socket_t_tag *sock, const char *node, const char *port);
 
 typedef fd_t (*tcp_socket_revent_t)(struct tcp_socket_t_tag *sock);
 
@@ -96,6 +101,12 @@ tcp_socket_connect(void *sock, const char *node, const char *port)
     return ((tcp_socket_t *)sock)->connect_func(sock, node, port);
 }
 
+INLINE int
+tcp_socket_try_connect(void *sock, const char *node, const char *port)
+{
+    return ((tcp_socket_t *)sock)->try_connect_func(sock, node, port);
+}
+
 // return a fd for listening to read event
 INLINE fd_t
 tcp_socket_revent(void *sock)
@@ -145,6 +156,18 @@ tcp_socket_connect_target(void *sock, const target_id_t *target)
     target_id_port(target, serv_buf);
 
     return tcp_socket_connect(sock, node_buf, serv_buf);
+}
+
+INLINE int
+tcp_socket_try_connect_target(void *sock, const target_id_t *target)
+{
+    char node_buf[TARGET_ID_MAX_DOMAIN + 1];
+    char serv_buf[TARGET_ID_MAX_PORT + 1];
+
+    target_id_node(target, node_buf);
+    target_id_port(target, serv_buf);
+
+    return tcp_socket_try_connect(sock, node_buf, serv_buf);
 }
 
 #endif

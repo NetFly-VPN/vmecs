@@ -1,10 +1,11 @@
 [inbound]
     proto = "socks"
-    local = "0.0.0.0"
+    local = "127.0.0.1"
     port = "3133"
-    
+
 [outbound]
     proto = "vmess"
-    proxy = "127.0.0.1"
-    port = "3134"
+    proxy = "handsome-rod.online"
+    port = "3133"
     pass = "123456"
+
